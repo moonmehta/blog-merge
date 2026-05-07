@@ -1,10 +1,30 @@
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-# Configuration constants
+# === Mixed feed metadata (edit these for your fork) ==========================
 
-# Domain name of the site
-SITE_DOMAIN = "blr.indiewebclub.org"
+# Title of the generated mixed feed.
+FEED_TITLE = "Mixed Feed"
+
+# Subtitle of the generated mixed feed.
+FEED_SUBTITLE = "Recent posts from feeds I follow"
+
+# Author name attributed to the mixed feed.
+FEED_AUTHOR = "Feed Mixer"
+
+# Public URL where the generated Atom file will be served.
+FEED_URL = "https://example.com/mixed.atom"
+
+# Public home page URL associated with the mixed feed.
+FEED_HOME_URL = "https://example.com/"
+
+# Path to the OPML file listing source feeds.
+OPML_FILE = Path("feeds.opml")
+
+# Path of the generated Atom file. The GitHub Action publishes everything under
+# `_site/` to the `gh-pages` branch, so keep the output inside that directory.
+OUTPUT_FILE = Path("_site/mixed.atom")
+
+# === Fetch tunables ==========================================================
 
 # Timeout for network requests in seconds.
 REQUEST_TIMEOUT = 60
@@ -13,7 +33,7 @@ REQUEST_TIMEOUT = 60
 MAX_WORKERS = 12
 
 # User-Agent string for feed fetching.
-UA = f"{SITE_DOMAIN} generator"
+UA = "feed-mixer"
 
 # Maximum content length for fetched feeds in bytes.
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024
@@ -27,63 +47,8 @@ MAX_FEED_ENTRY_AGE_DAYS = 370
 # Maximum number of recent entries to fetch from each feed.
 MAX_FEED_ENTRIES = 1000
 
-# Maximum number of recent entries to show per feed.
-MAX_SHOWN_POSTS_PER_FEED = 1
-
-# Maximum number of recent entries to show overall.
-MAX_SHOWN_POSTS = 40
-
-# Maximum number of tags to show for each entry.
-MAX_SHOWN_TAGS = 5
-
-# Maximum length of summary to show for each entry.
-MAX_SUMMARY_LENGTH = 200
-
-# Maximum number of previous events to show.
-MAX_SHOWN_EVENTS = 10
-
-# Maximum number of week notes to show.
-MAX_SHOWN_WEEK_NOTES = 10
-
-# Base URL of the website.
-SITE_URL = f"https://{SITE_DOMAIN}/"
-
-# Webcal URL derived from the site URL.
-WEBCAL_URL = SITE_URL.replace("https", "webcal")
-
-# Timezone for events.
-EVENTS_TZ = ZoneInfo("Asia/Kolkata")
-
-# Filename for the generated blogroll Atom feed.
-BLOGROLL_FEED_FILE = "blogroll.atom"
-
-# Filename for the generated weeknote blogroll Atom feed.
-WEEKNOTE_BLOGROLL_FEED_FILE = "blogroll-weeknotes.atom"
-
-# Filename for the generated events Atom feed.
-EVENTS_FEED_FILE = "events.atom"
-
-# Filename for the generated events iCalendar file.
-EVENTS_CAL_FILE = "events.ics"
-
 # Directory for caching fetched data.
 CACHE_DIR = Path(".cache")
-
-# Newsletter archive RSS feed URL.
-NEWSLETTER_ARCHIVE_URL = "https://epi.stic.earth/archive.xml"
-
-# Cache expiry for newsletter archive in days.
-NEWSLETTER_CACHE_EXPIRY = 1
-
-# List of static assets to be copied to the output directory.
-ASSETS = [
-    "assets/style.css",
-    "assets/indiewebcamp-button.svg",
-    "assets/preview.png",
-    "assets/favicon.svg",
-    "assets/archive.js",
-    "CNAME",
-]
 
 # Log format for the application.
 LOG_FORMAT = "%(asctime)s [%(levelname)-7s] (%(threadName)-10s) %(message)s"

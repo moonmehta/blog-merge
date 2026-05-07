@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import re
 import xml.etree.ElementTree as ET
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -16,25 +13,24 @@ from urllib.parse import quote, urlparse, urlsplit
 
 import feedparser
 import requests
-from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from feedgen.feed import FeedGenerator
 
 from src import config
-from src.utils import SessionManager, add_ref_param
+from src.utils import SessionManager
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format=config.LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class FeedInfo:
-    """Represents feed information from OPML."""
+    """Represents feed information."""
 
     title: str
     xml_url: str
-    html_url: str
+    # Public home page URL. Only meaningful for the generated mixed feed; for
+    # source feeds parsed from OPML this is left empty.
+    html_url: str = ""
 
 
 class FailureReason(Enum):
@@ -51,6 +47,32 @@ class FailedFeedInfo:
 
     feed_info: FeedInfo
     reason: FailureReason
+
+
+@dataclass
+class Body:
+    """A piece of entry text with its Atom content type ('text', 'html', or 'xhtml')."""
+
+    value: str
+    type: str  # "text" | "html" | "xhtml"
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
+
+def _atom_type(mime_or_type: str | None) -> str:
+    """Map a feedparser type (often a MIME type) to an Atom shorthand type."""
+    if not mime_or_type:
+        return "html"
+    t = mime_or_type.lower()
+    if t in ("text", "html", "xhtml"):
+        return t
+    if t == "text/plain":
+        return "text"
+    if t == "application/xhtml+xml":
+        return "xhtml"
+    # text/html and any other html-ish type default to html
+    return "html"
 
 
 session_manager = SessionManager(
@@ -71,46 +93,26 @@ class FeedEntry:
         published: datetime,
         feed_title: str,
         feed_url: str,
-        feed_home_url: str,
         tags: list[str],
-        summary: str,
+        summary: Body,
+        content: Body,
     ):
         self.title = title
         self.link = link
         self.published = published
         self.feed_title = feed_title
         self.feed_url = feed_url
-        self.feed_home_url = feed_home_url
         self.tags = tags
         self.summary = summary
-
-    def published_human(self) -> str:
-        return self.published.strftime("%d %b %Y")
-
-    def published_machine(self) -> str:
-        return self.published.isoformat()
+        self.content = content
 
     def __repr__(self) -> str:
         return f"""FeedEntry(title={self.title!r},
           link={self.link!r},
           published={self.published!r},
           feed_title={self.feed_title!r},
-          summary={self.summary!r})"""
-
-
-def entry_ctx(entry: FeedEntry) -> dict[str, str | bool]:
-    """Build a template context dict for a FeedEntry."""
-    entry_id = hashlib.sha256(entry.link.encode()).hexdigest()[:16]
-    return {
-        "entry_id": entry_id,
-        "title": entry.title,
-        "link_utm": add_ref_param(entry.link),
-        "feed_title": entry.feed_title,
-        "feed_home_url_utm": add_ref_param(entry.feed_home_url),
-        "published_machine": entry.published_machine(),
-        "published_human": entry.published_human(),
-        "summary": entry.summary,
-    }
+          summary={self.summary!r},
+          content={self.content!r})"""
 
 
 def parse_opml_file(opml_path: Path) -> list[FeedInfo]:
@@ -140,18 +142,13 @@ def parse_opml_file(opml_path: Path) -> list[FeedInfo]:
             xml_url = outline.get("xmlUrl")
             if xml_url:
                 title = outline.get("title") or outline.get("text")
-                html_url = outline.get("htmlUrl")
                 if title is None:
                     logger.error(f"OPML feed {xml_url} does not have title or text")
-                    raise
-                if html_url is None:
-                    logger.warning(
-                        f"OPML feed {title} does not have htmlUrl, using feed domain"
+                    raise ValueError(
+                        f"OPML feed {xml_url} has no 'title' or 'text' attribute"
                     )
-                    parsed_url = urlparse(xml_url)
-                    html_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-                feeds.append(FeedInfo(title=title, xml_url=xml_url, html_url=html_url))
-                logger.debug(f"Found feed: {title} -> {xml_url} -> {html_url}")
+                feeds.append(FeedInfo(title=title, xml_url=xml_url))
+                logger.debug(f"Found feed: {title} -> {xml_url}")
 
         logger.info(f"Found {len(feeds)} feeds in OPML file")
         return feeds
@@ -188,7 +185,8 @@ def generate_feed(
     if author_name is not None:
         fg.author(name=author_name)
     fg.link(href=feed_info.xml_url, rel="self")
-    fg.link(href=feed_info.html_url, rel="alternate")
+    if feed_info.html_url:
+        fg.link(href=feed_info.html_url, rel="alternate")
     if feed_subtitle is not None:
         fg.subtitle(feed_subtitle)
 
@@ -201,12 +199,14 @@ def generate_feed(
 
             fe.id(entry.link)
             fe.title(entry.title)
-            fe.link(href=add_ref_param(entry.link), rel="alternate")
+            fe.link(href=entry.link, rel="alternate")
             fe.published(entry.published)
             fe.updated(entry.published)
             fe.author(name=entry.feed_title, uri=entry.feed_url)
             if entry.summary:
-                fe.summary(summary=entry.summary, type="text")
+                fe.summary(summary=entry.summary.value, type=entry.summary.type)
+            if entry.content:
+                fe.content(content=entry.content.value, type=entry.content.type)
 
             for tag in entry.tags:
                 fe.category(term=tag)
@@ -214,7 +214,7 @@ def generate_feed(
             if feed_updated is None or feed_updated < entry.published:
                 feed_updated = entry.published
 
-    fg.updated(feed_updated or datetime.now())
+    fg.updated(feed_updated or datetime.now(timezone.utc))
     fg.atom_file(output_path, pretty=True)
 
 
@@ -265,17 +265,6 @@ def fetch_feed_content(url: str) -> str | None:
         logger.warning(f"Request error fetching feed {url}: {e}")
     except Exception as e:
         logger.error(f"Unexpected error fetching feed {url}: {e}")
-
-
-def prepend_fediverse_creator(
-    entries: list[FeedEntry], fediverse_creators: dict[str, str]
-) -> list[FeedEntry]:
-    """Prepend fediverse creator to entry summaries if available."""
-    for entry in entries:
-        creator = fediverse_creators.get(entry.feed_home_url)
-        if creator and not entry.summary.startswith(creator):
-            entry.summary = f"{creator}: {entry.summary}"
-    return entries
 
 
 def normalize_link(link: str, feed_url: str) -> str:
@@ -338,64 +327,23 @@ def parse_feed_date(date_string: str) -> datetime | None:
         return None
 
 
-def strip_html(text: str) -> str:
-    """Remove HTML tags from text."""
-    if not text:
-        return ""
-    return BeautifulSoup(text, "html.parser").get_text().strip()
+def extract_summary(entry) -> Body:
+    """Copy entry summary as-is, with no extraction or stripping."""
+    if hasattr(entry, "summary") and entry.summary:
+        detail = getattr(entry, "summary_detail", None)
+        mime = getattr(detail, "type", None) if detail is not None else None
+        return Body(value=entry.summary, type=_atom_type(mime))
+    return Body(value="", type="text")
 
 
-def get_first_para_text(html: str) -> str:
-    """Extract text from the first paragraph in HTML, or first para if plain text."""
-    if not html:
-        return ""
-    soup = BeautifulSoup(html, "html.parser")
-    paragraphs = soup.find_all("p")
-    for p in paragraphs:
-        text = p.get_text().strip()
-        if text:
-            return text
-
-    paragraphs = html.strip().split("\n\n")
-    first_para = paragraphs[0] if paragraphs else html
-    return strip_html(first_para)
-
-
-def truncate_at_word(text: str, max_length: int) -> str:
-    """Truncate text at word boundary, adding ellipsis if truncated."""
-    if len(text) <= max_length:
-        return text
-    truncated = text[:max_length]
-    last_space = truncated.rfind(" ")
-    if last_space > 0:
-        truncated = truncated[:last_space]
-    return truncated + "…"
-
-
-def extract_summary(entry, feed_title: str, title: str, link: str) -> str:
-    """Extract and normalize summary from a feed entry."""
-    html_content = None
-
-    if hasattr(entry, "summary"):
-        html_content = entry.summary
-
-    if not html_content and hasattr(entry, "content") and entry.content:
+def extract_content(entry) -> Body:
+    """Copy entry content as-is, with no extraction or stripping."""
+    if hasattr(entry, "content") and entry.content:
         content = entry.content[0]
-        if hasattr(content, "value"):
-            html_content = content.value
-
-    if not html_content:
-        return ""
-
-    plain = get_first_para_text(html_content)
-
-    if not plain:
-        return ""
-
-    if len(plain) > config.MAX_SUMMARY_LENGTH:
-        plain = truncate_at_word(plain, config.MAX_SUMMARY_LENGTH)
-
-    return plain
+        if hasattr(content, "value") and content.value:
+            mime = getattr(content, "type", None)
+            return Body(value=content.value, type=_atom_type(mime))
+    return Body(value="", type="text")
 
 
 def parse_feed(
@@ -480,7 +428,13 @@ def parse_feed(
                 for tag in getattr(entry, "tags", [])
             ]
 
-            summary = extract_summary(entry, feed_title, title, link)
+            summary = extract_summary(entry)
+            content = extract_content(entry)
+            # Many feeds populate both <summary> and <content> with the same
+            # text. Keep only the content in that case; if only summary is set,
+            # leave it alone.
+            if summary and content and summary.value.strip() == content.value.strip():
+                summary = Body(value="", type="text")
 
             entries.append(
                 FeedEntry(
@@ -489,18 +443,15 @@ def parse_feed(
                     published=published,
                     feed_title=feed_title,
                     feed_url=feed_url,
-                    feed_home_url=parsed_feed.feed.link,
                     tags=[tag for tag in tags if tag is not None],
-                    summary=(
-                        f"«{summary}»"
-                        if summary and not summary.startswith("«")
-                        else summary
-                    ),
+                    summary=summary,
+                    content=content,
                 )
             )
 
-        # Sort by publication date (newest first) and take top N
-        entries.sort(key=lambda x: x.published, reverse=True)
+        # Sort by publication date (newest first) and take top N. Tie-break by
+        # link so output is stable when entries share a timestamp.
+        entries.sort(key=lambda x: (x.published, x.link), reverse=True)
         entries = entries[: config.MAX_FEED_ENTRIES]
 
         logger.debug(f"Extracted {len(entries)} recent entries from {feed_title}")
@@ -512,14 +463,13 @@ def parse_feed(
 
 
 def process_single_feed(
-    feed_info: FeedInfo, use_cache: bool, cache_fallback: bool
+    feed_info: FeedInfo, cache_fallback: bool
 ) -> tuple[list[FeedEntry], FailureReason | None]:
     """
     Process a single feed: fetch and parse it.
 
     Args:
         feed_info: FeedInfo object containing feed metadata.
-        use_cache: Whether to use cached content instead of fetching.
         cache_fallback: Whether to fall back to cached content on fetch failure
             and update the cache on success.
 
@@ -528,25 +478,20 @@ def process_single_feed(
     """
     feed_title = feed_info.title
     feed_url = feed_info.xml_url
-    home_url = feed_info.html_url
 
     cache_key = hashlib.sha256(feed_url.encode()).hexdigest()
     cache_file = config.CACHE_DIR / cache_key
 
-    if use_cache and cache_file.exists():
-        logger.debug(f"Using cached content for: {feed_url}")
-        content = cache_file.read_text(encoding="utf-8")
-    else:
-        # Fetch feed content
-        content = fetch_feed_content(feed_url)
-        if content and cache_fallback:
-            cache_file.write_text(content, encoding="utf-8")
-        if not content:
-            if cache_fallback and cache_file.exists():
-                logger.info(f"Using cached content as fallback for: {feed_url}")
-                content = cache_file.read_text(encoding="utf-8")
-            else:
-                return [], FailureReason.ERROR
+    # Fetch feed content
+    content = fetch_feed_content(feed_url)
+    if content and cache_fallback:
+        cache_file.write_text(content, encoding="utf-8")
+    if not content:
+        if cache_fallback and cache_file.exists():
+            logger.info(f"Using cached content as fallback for: {feed_url}")
+            content = cache_file.read_text(encoding="utf-8")
+        else:
+            return [], FailureReason.ERROR
 
     # Parse feed content
     (entries, has_entries) = parse_feed(feed_title, feed_url, content)
@@ -560,33 +505,18 @@ def process_single_feed(
         else:
             return [], FailureReason.NO_ENTRIES
 
-    for entry in entries:
-        entry.feed_home_url = home_url
-
-    if use_cache:
-        # Save content to cache
-        generate_feed(
-            feed_info=feed_info,
-            author_name=entries[0].feed_title,
-            feed_subtitle=None,
-            entries=entries,
-            output_path=cache_file,
-        )
-        logger.debug(f"Cached content for: {feed_url}")
-
     logger.info(f"Processed {feed_title}: {len(entries)} entries")
     return entries, None
 
 
 def fetch_all_feeds(
-    feeds: list[FeedInfo], use_cache: bool, cache_fallback: bool
+    feeds: list[FeedInfo], cache_fallback: bool
 ) -> tuple[list[FeedEntry], list[FailedFeedInfo]]:
     """
     Fetch and parse all feeds concurrently.
 
     Args:
         feeds: List of FeedInfo objects.
-        use_cache: Whether to use cached content instead of fetching.
         cache_fallback: Whether to fall back to cached content on fetch failure.
 
     Returns:
@@ -607,9 +537,7 @@ def fetch_all_feeds(
     ) as executor:
         # Submit all feed processing tasks
         future_to_feed = {
-            executor.submit(
-                process_single_feed, feed_info, use_cache, cache_fallback
-            ): feed_info
+            executor.submit(process_single_feed, feed_info, cache_fallback): feed_info
             for feed_info in feeds
         }
 
@@ -636,117 +564,28 @@ def fetch_all_feeds(
     return all_entries, failed_feeds
 
 
-def group_feed_entries(entries: list[FeedEntry]) -> list[FeedEntry]:
+def generate_mixed_feed(entries: list[FeedEntry], output_path: Path):
     """
-    Group and sort feed entries by feed title, keeping only the most recent entries per feed.
-
-    Args:
-        entries: List of FeedEntry objects to group.
-
-    Returns:
-        List of FeedEntry objects grouped by feed title and sorted by publication date.
-    """
-    # Group entries by OPML feed title
-    feed_groups: defaultdict[str, list[FeedEntry]] = defaultdict(list)
-
-    for entry in entries:
-        feed_groups[entry.feed_title].append(entry)
-
-    res_entries: list[FeedEntry] = []
-    for feed_title in feed_groups.keys():
-        group_entries = feed_groups[feed_title]
-        group_entries.sort(key=lambda x: (x.published, x.link), reverse=True)
-        group_entries = [
-            deepcopy(entry)
-            for entry in group_entries[: config.MAX_SHOWN_POSTS_PER_FEED]
-        ]
-
-        for entry in group_entries:
-            entry.tags = entry.tags[: config.MAX_SHOWN_TAGS]
-
-        res_entries.extend(group_entries)
-
-    # Sort result entries globally by publication date for overall stats
-    res_entries.sort(key=lambda x: (x.published, x.link), reverse=True)
-    return res_entries
-
-
-WEEKNOTE_PATTERN = re.compile(
-    r"\b(?:week|month|quarter|year)(?:ly|'s|’s)?[-_ ]?notes?\b",
-    re.IGNORECASE,
-)
-
-WEEK_EXCLUSIONS = frozenset(
-    [
-        "week's",
-        "week’s",
-        "weekend",
-        "weekday",
-        "biweek",
-        "midweek",
-        "mid week",
-        "mid-week",
-        "semiweek",
-        "semi-week",
-        "yesterweek",
-    ]
-)
-
-
-def separate_weeknote_entries(
-    entries: list[FeedEntry],
-) -> tuple[list[FeedEntry], list[FeedEntry]]:
-    """Split entries into weeknote-like posts and everything else.
-
-    A post is treated as a weeknote if any of:
-      - a tag matches WEEKNOTE_PATTERN (week/month/quarter/year + "note")
-      - the title matches WEEKNOTE_PATTERN
-      - the title contains "week" and none of WEEK_EXCLUSIONS
-    """
-    weeknote_entries: list[FeedEntry] = []
-    other_entries: list[FeedEntry] = []
-
-    for entry in entries:
-        title = entry.title.lower()
-        if (
-            any(WEEKNOTE_PATTERN.search(tag) for tag in entry.tags)
-            or WEEKNOTE_PATTERN.search(title)
-            or ("week" in title and all(w not in title for w in WEEK_EXCLUSIONS))
-        ):
-            weeknote_entries.append(entry)
-        else:
-            other_entries.append(entry)
-
-    return (weeknote_entries, other_entries)
-
-
-def generate_blogroll_feed(
-    entries: list[FeedEntry], feed_name: str, feed_subtitle: str, output_path: Path
-):
-    """
-    Creates an Atom feed from a list of FeedEntry objects.
+    Creates the mixed Atom feed from all collected entries.
 
     Args:
         entries: A list of FeedEntry objects to include in the feed.
-        feed_name: Name of generator feed.
-        feed_subtitle: Subtitle of the generated feed.
         output_path: The path of the Atom file to be written.
     """
-    logger.info(f"Generating {feed_name} feed with {len(entries)} entries")
-    feed_url = config.SITE_URL + output_path.name
+    logger.info(f"Generating mixed feed with {len(entries)} entries")
 
     feed_info = FeedInfo(
-        title=f"IndieWebClub Bangalore {feed_name}",
-        xml_url=feed_url,
-        html_url=config.SITE_URL,
+        title=config.FEED_TITLE,
+        xml_url=config.FEED_URL,
+        html_url=config.FEED_HOME_URL,
     )
 
     generate_feed(
         feed_info=feed_info,
-        author_name="IndieWebClub Bangalore",
-        feed_subtitle=feed_subtitle,
+        author_name=config.FEED_AUTHOR,
+        feed_subtitle=config.FEED_SUBTITLE,
         entries=entries,
         output_path=output_path,
     )
 
-    logger.info(f"{feed_name} feed written to: {output_path}")
+    logger.info(f"Mixed feed written to: {output_path}")

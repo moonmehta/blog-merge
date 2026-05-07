@@ -1,38 +1,31 @@
-# IndiewebClubBlr website generator
-# Provides convenient commands for development and usage
+# feed-mixer
+# Convenient commands for development and usage.
 
-.PHONY: help setup install clean run build assets serve watch clean_venv clean_cache clean_all graph
+.PHONY: help setup install run clean clean_venv clean_cache clean_all
 .DEFAULT_GOAL := help
 
-# Variables
 PYTHON := python3
 VENV_DIR := venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
 VENV_PIP := $(VENV_DIR)/bin/pip
 
-# Targets
 help:
-	@echo "IndiewebClubBlr website generator"
-	@echo "===================="
+	@echo "feed-mixer"
+	@echo "=========="
 	@echo ""
 	@echo "Available commands:"
-	@echo "  make setup          - Set up virtual environment and install dependencies"
-	@echo "  make install        - Install dependencies (assumes venv exists)"
-	@echo "  make build          - Build the website (add CACHE=true to read from cache only)"
-	@echo "  make graph          - Generate build dependency graph (outputs build_deps.dot and .svg)"
-	@echo "  make assets         - Copy assets to the build directory"
-	@echo "  make clean          - Remove generated files"
-	@echo "  make clean_venv     - Remove the virtual environment"
-	@echo "  make clean_cache    - Remove the cache"
-	@echo "  make clean_all      - Remove all generated files, virtual environment and cache"
-	@echo "  make serve          - Serve the website on localhost"
-	@echo "  make watch          - Watch for changes and rebuild the website/copy assets"
-	@echo "  make help           - Show this help message"
+	@echo "  make setup        - Set up virtual environment and install dependencies"
+	@echo "  make install      - Install dependencies (assumes venv exists)"
+	@echo "  make run          - Fetch feeds and write the mixed Atom feed"
+	@echo "                      (add CACHE_FALLBACK=true to use cache on fetch failure)"
+	@echo "  make clean        - Remove generated output"
+	@echo "  make clean_venv   - Remove the virtual environment"
+	@echo "  make clean_cache  - Remove the feed cache"
+	@echo "  make clean_all    - Remove output, cache, and virtual environment"
+	@echo "  make help         - Show this help message"
 
-# Set up virtual environment and install dependencies
 setup: $(VENV_DIR)/bin/activate
-	@echo "Setup complete! Virtual environment ready."
-	@echo "To activate: source $(VENV_DIR)/bin/activate"
+	@echo "Setup complete. To activate: source $(VENV_DIR)/bin/activate"
 
 $(VENV_DIR)/bin/activate: requirements.txt
 	@echo "Creating virtual environment..."
@@ -42,7 +35,6 @@ $(VENV_DIR)/bin/activate: requirements.txt
 	$(VENV_PIP) install -r requirements.txt
 	@touch $(VENV_DIR)/bin/activate
 
-# Install dependencies (assumes virtual environment exists)
 install:
 	@if [ ! -d "$(VENV_DIR)" ]; then \
 		echo "Virtual environment not found. Run 'make setup' first."; \
@@ -51,53 +43,18 @@ install:
 	$(VENV_PIP) install --upgrade pip
 	$(VENV_PIP) install -r requirements.txt
 
-# Build the website
-build: setup blogroll.opml
-	@echo "Building website..."
-	mkdir -p _site/
-	$(VENV_PYTHON) src/generator.py blogroll.opml _site $(if $(VERBOSE),--verbose) $(if $(CACHE),--cache) $(if $(CACHE_FALLBACK),--cache-fallback)
-	@echo "Generated website"
+run: setup
+	$(VENV_PYTHON) src/mixer.py $(if $(VERBOSE),--verbose) $(if $(CACHE),--cache) $(if $(CACHE_FALLBACK),--cache-fallback)
 
-# Copy the assets
-assets:
-	@echo "Copying assets..."
-	mkdir -p _site/
-	cp assets/*.css _site/
-	cp assets/*.svg _site/
-	cp assets/*.png _site/
-	@echo "Copied assets"
-
-# Clean up generated files
 clean:
-	@echo "Cleaning up..."
-	rm -rf _site || true
-	rm -f *.pyc
-	rm -rf __pycache__ || true
-	rm -rf src/__pycache__ || true
-	@echo "Cleanup complete"
+	@echo "Cleaning output..."
+	rm -rf _site
+	rm -rf src/__pycache__ __pycache__
 
-# Clean up virtual environment
 clean_venv:
-	@echo "Cleaning up virtual environment..."
 	rm -rf $(VENV_DIR)
 
-# Clean up cache
 clean_cache:
-	@echo "Cleaning up cache..."
-	rm -rf .cache || true
+	rm -rf .cache
 
-# Clean up all generated files
 clean_all: clean clean_venv clean_cache
-
-# Serve the website
-serve:
-	$(VENV_PYTHON) -m http.server -d ./_site/
-
-# Watch for changes and copy assets
-watch:
-	make build CACHE=true
-	git ls-files | entr -p -r ./watch.sh /_
-
-# Generate build dependency graph
-graph:
-	make build CACHE=true VERBOSE=true 2>&1 | python3 scripts/gen_build_graph.py

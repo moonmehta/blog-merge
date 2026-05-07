@@ -1,128 +1,105 @@
-# IndieWebClub Bangalore Website
+# feed-mixer
 
-This repository contains the source code for the [IndieWebClub Bangalore website](https://blr.indiewebclub.org/), a static site generated using Python. The website displays upcoming and past events, and a blogroll of recent posts from the community.
+Fetch a bunch of RSS/Atom feeds listed in an OPML file, mix their recent
+entries together, and write a single combined Atom feed. Designed to run on a
+schedule via GitHub Actions and publish the result to GitHub Pages.
 
-## Features
+## What it does
 
-- Event feed and calendar
-- Member blogroll page and feeds
-- Member directory
-- Webring
-- CI/CD
+- Parses an OPML file for `xmlUrl` entries.
+- Fetches every feed concurrently (with size, timeout, and content-length
+  guards).
+- Filters entries by age (`MIN_FEED_ENTRY_AGE_HOURS` ..
+  `MAX_FEED_ENTRY_AGE_DAYS`).
+- Copies entry summary or content as-is — no extraction, stripping, or
+  truncation.
+- Caches feed responses on disk so transient fetch failures don't drop a feed
+  from the output.
+- Writes a single Atom file to `OUTPUT_FILE`.
 
-## Installation
+## Quick start
 
-### Prerequisites
+1. **Fork** this repo.
+2. Replace [`feeds.opml`](feeds.opml) with your own OPML list of feeds.
+3. Edit [`src/config.py`](src/config.py) — at minimum set `FEED_TITLE`,
+   `FEED_SUBTITLE`, `FEED_AUTHOR`, `FEED_URL`, and `FEED_HOME_URL`.
+4. [Set up the GitHub Action](#setting-up-the-github-action).
+5. [Set up GitHub Pages](#setting-up-github-pages).
+6. Push your changes. The Action runs hourly and republishes the feed.
 
-- Python 3.x
-- `make`
+## Setting up the GitHub Action
 
-### Installation and Setup
+The workflow at [`.github/workflows/update.yml`](.github/workflows/update.yml)
+runs hourly, on every push to `main`, and on manual dispatch. It needs
+permission to push to a `gh-pages` branch.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/IndieWebClubBlr/website.git
-    cd website
-    ```
+1. In your fork, go to **Settings → Actions → General**.
+2. Under **Workflow permissions**, select **Read and write permissions** and
+   click **Save**. This lets the workflow create and update the `gh-pages`
+   branch.
+3. Go to the **Actions** tab. If Actions are disabled on your fork, click
+   **I understand my workflows, go ahead and enable them**.
+4. Open the **feed-mixer** workflow and click **Enable workflow** to enable it.
+5. Next, click **Run workflow** to trigger the
+   first build manually (the schedule will take over after that).
+5. Wait for the run to finish. It will create a `gh-pages` branch containing
+   your generated Atom file.
 
-2.  **Set up the environment and install dependencies:**
-    The `Makefile` provides a convenient way to set up a Python virtual environment and install the required dependencies from `requirements.txt`.
+## Setting up GitHub Pages
 
-    ```bash
-    make setup
-    ```
+After the first successful Action run has created the `gh-pages` branch:
 
-    You can run `make` or `make help` at any time to see a list of all available commands.
+1. Go to **Settings → Pages**.
+2. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
+3. Set **Branch** to `gh-pages` and the folder to `/ (root)`. Click **Save**.
+4. Wait a minute, then refresh the Pages settings page. GitHub will show the
+   public URL, e.g. `https://<you>.github.io/<repo>/`.
+5. Your mixed feed is served at
+   `https://<you>.github.io/<repo>/<basename of OUTPUT_FILE>` — for example
+   `https://<you>.github.io/<repo>/mixed.atom` with the default config.
+6. Update `FEED_URL` in [`src/config.py`](src/config.py) to that public URL
+   and push, so the Atom file's self-link points at the right place.
 
-3.  **Activate the virtual environment if required:**
-    ```bash
-    source venv/bin/activate
-    ```
+If you use a custom domain, add a `CNAME` file to the repo root containing
+your domain (the workflow copies it into `_site/` so it lands at the root of
+the `gh-pages` branch), and configure the domain under
+**Settings → Pages → Custom domain**. Without the `CNAME` file in the
+published branch, GitHub clears the custom-domain setting on every deploy.
 
-## Usage
+## Local usage
 
-The following commands are available through the `Makefile`.
+Requires Python 3.10 or newer.
 
-### Common Commands
+```sh
+make setup                     # one time: create venv, install deps
+make run                       # fetch and build
+make run CACHE_FALLBACK=true   # fall back to cached feeds on fetch failure
+make clean                     # remove generated atom file
+```
 
--   **`make build`**: Build the website. This will generate the static files in the `_site` directory. For faster builds during development, you can enable caching by running `make build CACHE=true`.
--   **`make serve`**: Serve the website locally for development. You can view the site at `http://localhost:8000`.
--   **`make watch`**: Automatically rebuild the site when files change.
+You can also invoke the script directly:
 
-### Other Commands
-
--   **`make install`**: Install or update dependencies if `requirements.txt` changes.
--   **`make clean`**: Remove the generated `_site` directory.
--   **`make clean_all`**: Perform a full cleanup, removing the `_site` directory, the `venv`, and the cache.
-
-## How it Works
-
-The website is generated by the `generator.py` script. This script performs the following steps:
-
-1.  **Parses `blogroll.opml`**: Reads the list of community blog feeds.
-2.  **Fetches feeds**: Concurrently fetches the content of each feed.
-3.  **Detects weeknotes**: Automatically separates weeknote entries from regular blog posts based on title and tag patterns.
-4.  **Fetches events**: Retrieves event information from the Underline Center Discourse API.
-5.  **Generates the homepage**: Ggenerate the homepage with the aggregated content.
-6.  **Generated static pages**: Converts Markdown files in the `pages/` directory to static HTML pages.
-7.  **Generates feeds and calendar**: Creates Atom feeds for the blogroll and events, and an iCalendar file for events.
-8.  **Generates member directory**: Creates a member directory page listing all community members.
-9.  **Generates webring**: Creates webring redirect links that connect to random member websites.
-
-The generated site is then deployed to the `gh-pages` branch of the repository.
+```sh
+python src/mixer.py --cache-fallback --verbose
+```
 
 ## Configuration
 
-The project's behavior can be customized through the `config.py` file. This file includes settings for request timeouts, content length limits, feed and calendar file names, and more. Some of the key options you might want to modify are:
+All knobs live in [`src/config.py`](src/config.py):
 
--   `MAX_SHOWN_POSTS_PER_FEED`: The number of posts to display per blog on the homepage.
--   `MAX_FEED_ENTRY_AGE_DAYS`: The time window in days for fetching recent blog posts.
--   `MAX_FEED_ENTRIES`: The maximum number of entries to fetch from each feed.
-
-## Project Structure
-
-A brief overview of the project's file structure:
-
-```
-/
-├── .github/                   # GitHub Actions workflows for CI/CD.
-├── _site/                     # Output directory for the generated website.
-├── assets/                    # Static assets (CSS, SVG icons, PNG images).
-│   ├── favicon.svg
-│   ├── indiewebcamp-button.svg
-│   ├── preview.png
-│   └── style.css
-├── pages/                     # Markdown files for static pages.
-│   ├── coc.md
-│   └── webring.md
-├── src/                       # Python source code.
-│   ├── __init__.py
-│   ├── build.py               # Pull-based build system for parallel task execution.
-│   ├── config.py              # Configuration constants for the project.
-│   ├── events.py              # Logic for fetching events from the Discourse API.
-│   ├── feeds.py               # Logic for fetching and parsing blogroll feeds.
-│   ├── generator.py           # Main script to generate the static site.
-│   ├── member_dir.py          # Logic for generating the member directory page.
-│   └── utils.py               # Shared utilities for templating and HTTP requests.
-├── templates/                 # HTML templates.
-│   ├── default.html           # Template for wrapping generated content with site layout.
-│   ├── index.html             # The pystache template for the homepage.
-│   └── webring-redirect.html  # Template for webring redirect pages.
-├── CNAME                      # Custom domain configuration for GitHub Pages.
-├── LICENSE                    # The license for the project.
-├── README.md                  # This file.
-├── Makefile                   # Contains all the commands for building, serving, and cleaning the project.
-├── blogroll.opml              # The list of feeds for the blogroll.
-├── pyrightconfig.json         # Configuration file for the Pyright type checker.
-├── requirements.txt           # Python dependencies for the project.
-├── shell.nix                  # Nix shell configuration for reproducible development environments.
-└── watch.sh                   # A script to watch for file changes and rebuild the site.
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to open an issue or submit a pull request.
+| Setting | Purpose |
+| --- | --- |
+| `FEED_TITLE`, `FEED_SUBTITLE`, `FEED_AUTHOR` | Metadata for the generated feed |
+| `FEED_URL`, `FEED_HOME_URL` | Public URLs of the generated feed and its home page |
+| `OPML_FILE` | Path to your OPML file |
+| `OUTPUT_FILE` | Where to write the mixed Atom feed (must be under `_site/` to be published) |
+| `MIN_FEED_ENTRY_AGE_HOURS` | Skip entries newer than this (de-flake) |
+| `MAX_FEED_ENTRY_AGE_DAYS` | Drop entries older than this |
+| `MAX_FEED_ENTRIES` | Cap entries pulled from each source feed |
+| `MAX_WORKERS` | Concurrent fetchers |
+| `REQUEST_TIMEOUT`, `MAX_CONTENT_LENGTH`, `UA` | HTTP fetch limits |
+| `CACHE_DIR` | Where to cache fetched feed bodies |
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+See [LICENSE](LICENSE).

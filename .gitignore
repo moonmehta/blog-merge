@@ -1,5 +1,8 @@
-_site
+_site/
+.cache/
+venv/
+__pycache__/
+src/__pycache__/
+*.pyc
 .envrc
-.cache
-__pycache__
- src/__pycache_
+.DS_Store
