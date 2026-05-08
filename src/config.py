@@ -3,19 +3,19 @@ from pathlib import Path
 # === Mixed feed metadata (edit these for your fork) ==========================
 
 # Title of the generated mixed feed.
-FEED_TITLE = "Mixed Feed"
+FEED_TITLE = "Jatan blogs"
 
 # Subtitle of the generated mixed feed.
-FEED_SUBTITLE = "Recent posts from feeds I follow"
+FEED_SUBTITLE = "Single feed for my blogs"
 
 # Author name attributed to the mixed feed.
-FEED_AUTHOR = "Feed Mixer"
+FEED_AUTHOR = "Jatan Mehta"
 
 # Public URL where the generated Atom file will be served.
-FEED_URL = "https://example.com/mixed.atom"
+FEED_URL = "https://notes.jatan.space/blog-merge/feed.atom"
 
 # Public home page URL associated with the mixed feed.
-FEED_HOME_URL = "https://example.com/"
+FEED_HOME_URL = "https://notes.jatan.space/blog-merge"
 
 # Path to the OPML file listing source feeds.
 OPML_FILE = Path("feeds.opml")
@@ -45,7 +45,7 @@ MIN_FEED_ENTRY_AGE_HOURS = 2
 MAX_FEED_ENTRY_AGE_DAYS = 370
 
 # Maximum number of recent entries to fetch from each feed.
-MAX_FEED_ENTRIES = 1000
+MAX_FEED_ENTRIES = 10
 
 # Directory for caching fetched data.
 CACHE_DIR = Path(".cache")
