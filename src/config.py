@@ -12,7 +12,7 @@ FEED_SUBTITLE = "Single feed for my blogs"
 FEED_AUTHOR = "Jatan Mehta"
 
 # Public URL where the generated Atom file will be served.
-FEED_URL = "https://notes.jatan.space/blog-merge/feed.atom"
+FEED_URL = "https://notes.jatan.space/blog-merge/mixed.atom"
 
 # Public home page URL associated with the mixed feed.
 FEED_HOME_URL = "https://notes.jatan.space/blog-merge"
