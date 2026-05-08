@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="1.1">
   <body>
-    <outline type="rss" text="Abhinav Sarkar" xmlUrl="https://abhinavsarkar.net/all.atom" />
-    <outline type="rss" text="Abhinav Sarkar" xmlUrl="https://abhinavsarkar.net/photography/feed.atom" />
+    <outline type="rss" text="Journal J" xmlUrl="https://journal.jatan.space/rss" />
+    <outline type="rss" text="jatan.space" xmlUrl="https://jatan.space/rss" />
   </body>
 </opml>
