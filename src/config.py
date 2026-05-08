@@ -15,7 +15,7 @@ FEED_AUTHOR = "Jatan Mehta"
 FEED_URL = "https://notes.jatan.space/blog-merge/feed.atom"
 
 # Public home page URL associated with the mixed feed.
-FEED_HOME_URL = "https://notes.jatan.space/blog-merge"
+FEED_HOME_URL = "https://jatan.space/blogs"
 
 # Path to the OPML file listing source feeds.
 OPML_FILE = Path("feeds.opml")
@@ -39,13 +39,13 @@ UA = "feed-mixer"
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024
 
 # Minimum age in hours of recent entries to fetch from each feed.
-MIN_FEED_ENTRY_AGE_HOURS = 2
+MIN_FEED_ENTRY_AGE_HOURS = 1
 
 # Maximum age in days of recent entries to fetch from each feed.
 MAX_FEED_ENTRY_AGE_DAYS = 370
 
 # Maximum number of recent entries to fetch from each feed.
-MAX_FEED_ENTRIES = 10
+MAX_FEED_ENTRIES = 50
 
 # Directory for caching fetched data.
 CACHE_DIR = Path(".cache")
