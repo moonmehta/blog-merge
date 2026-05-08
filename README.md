@@ -2,6 +2,8 @@
 
 **Acknowledgements:** Thanks to [Abhinav Sarkar](https://abhinavsarkar.net), I’m using this code to form a single RSS feed for [my space blog](https://jatan.space/about) and [Journal J](https://journal.jatan.space/about).
 
+---
+
 Fetch a bunch of RSS/Atom feeds listed in an OPML file, mix their recent
 entries together, and write a single combined Atom feed. Designed to run on a
 schedule via GitHub Actions and publish the result to GitHub Pages.
