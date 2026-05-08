@@ -12,7 +12,7 @@ FEED_SUBTITLE = "Single feed for my blogs"
 FEED_AUTHOR = "Jatan Mehta"
 
 # Public URL where the generated Atom file will be served.
-FEED_URL = "https://notes.jatan.space/blog-merge/mixed.atom"
+FEED_URL = "https://notes.jatan.space/blog-merge/feed.atom"
 
 # Public home page URL associated with the mixed feed.
 FEED_HOME_URL = "https://notes.jatan.space/blog-merge"
@@ -22,7 +22,7 @@ OPML_FILE = Path("feeds.opml")
 
 # Path of the generated Atom file. The GitHub Action publishes everything under
 # `_site/` to the `gh-pages` branch, so keep the output inside that directory.
-OUTPUT_FILE = Path("_site/mixed.atom")
+OUTPUT_FILE = Path("_site/feed.atom")
 
 # === Fetch tunables ==========================================================
 
