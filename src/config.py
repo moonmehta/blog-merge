@@ -45,7 +45,7 @@ MIN_FEED_ENTRY_AGE_HOURS = 1
 MAX_FEED_ENTRY_AGE_DAYS = 370
 
 # Maximum number of recent entries to fetch from each feed.
-MAX_FEED_ENTRIES = 50
+MAX_FEED_ENTRIES = 25
 
 # Directory for caching fetched data.
 CACHE_DIR = Path(".cache")
