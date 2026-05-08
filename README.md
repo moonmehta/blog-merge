@@ -1,7 +1,7 @@
 # feed-mixer
 
-_**Acknowledgements:** Thanks to [Abhinav Sarkar](https://abhinavsarkar.net), I’m using this code to create a single RSS feed from the feeds of [my space blog](https://jatan.space/about) and [Journal J](https://journal.jatan.space/about).
-_
+_**Acknowledgements:** Thanks to [Abhinav Sarkar](https://abhinavsarkar.net), I’m using this code to create a single RSS feed from the feeds of [my space blog](https://jatan.space/about) and [Journal J](https://journal.jatan.space/about)._
+
 ---
 
 Fetch a bunch of RSS/Atom feeds listed in an OPML file, mix their recent
